@@ -18,6 +18,8 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ## Background
+
+Data set source: Exam scores from http://www.bristol.ac.uk/cmm/learning/support/datasets/
 This dataset comes from The Associated Examining Board in Guildford,
 and contents 1905 records. It has been used to examine the relationships 
 between candidates'genders and their examination performances.  Each 
