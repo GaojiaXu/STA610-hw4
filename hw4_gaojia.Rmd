@@ -1,0 +1,384 @@
+---
+title: "hw4_gaojia"
+author: "Gaojia Xu"
+date: "11/21/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(patchwork)
+library(knitr)
+library(kableExtra)
+library(influence.ME)
+library(lattice)
+library(gridExtra)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+This dataset comes from The Associated Examining Board in Guildford,
+and contents 1905 records. It has been used to examine the relationships 
+between candidates'genders and their examination performances.  Each 
+candidate comes from a center ( a school or a college ). 
+
+The data set format is as follows:
+
+
+          Column      Description                Coding
+
+          center         Centre where a candidate   Codes 20920-84772
+                      comes from
+
+          id        Candidate identifier       Codes 1 to 5521
+
+          gender         Gender code                Boy=0; girl=1
+
+          paper       Result on written paper    Score 1 to 144
+
+          coursework       Courework evaluated by teachers    Score 10 to 108
+
+We have 1905 observations and 5 variables. We make gender and center to factors for easier interpretation.          
+```{r}
+df <- read.table("sci/SCI.DAT", col.names = c("center", "id", "gender", "paper", "coursework_eval"))
+df <- df %>%
+  mutate(gender = factor(gender)) %>%
+  mutate(center = factor(center))
+  
+```
+
+
+
+## Research Questions
+
+
+1. Examine the variability of paper grades across centers.
+2. How is the coursework evaluation by professors relate to paper grade?
+3. Whether gender of the student is associated with paper grade?
+
+## EDA
+
+Response is the paper grades.
+Did not find NA values.
+```{r}
+#check NA values
+colSums(is.na(df)) %>% kable(col.names='Number of NA values', caption = "Missing values counts by variables")
+```
+
+
+```{r}
+str(df)
+```
+
+We have 73 centers in total.
+
+```{r}
+length(unique(df$center))
+```
+
+### response variable: paper
+
+```{r}
+ggplot(data=df, aes(paper)) +
+  geom_histogram(aes(y=..density..),
+                 color="black",
+                 linetype="dashed",
+                 fill="lightblue",
+                 bins=15) + 
+  theme(legend.position="none",
+        axis.text.x = element_text(size =9),
+        axis.text.y = element_text(size =9),
+        axis.title = element_text(size =9),
+        plot.title = element_text(size =9)) +
+  geom_density(alpha=.25, fill="lightblue") + 
+  scale_fill_brewer(palette="Blues") +
+  labs(title="Distribution of paper grade", x="", y="") + 
+  theme_classic()
+
+```
+From the above plot, response `paper` seems to be normally distributed, which meets the assumption of ANOVA model.
+
+### center
+
+```{r}
+df %>%
+  group_by(center) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  arrange(n) %>%
+  kable(caption = "sample size by labs",
+        align = "c") %>%
+  kable_styling(latex_options = "HOLD_position")
+```
+
+From the above table, we see several centers have many data points and some do not have enough data, such as in center 68137, there are 104 observations, in center 84707, we only have 2 observations, which are not enough, so we should consider borrowing information across centers.
+
+
+```{r}
+ggplot(df, aes(x=reorder(center, paper, median), y=paper)) +
+  geom_boxplot(fill = "lightblue") +
+  labs(title="Boxplot of paper grade by center", 
+       x="center", 
+       y="paper grade") + 
+  theme_classic() + 
+  theme(legend.position="none",
+        axis.text.x = element_text(size =9),
+        axis.text.y = element_text(size =9),
+        axis.title = element_text(size =9),
+        plot.title = element_text(size =9)) +
+  coord_flip()
+```
+
+For each center, the paper grades are quite different and some states have outliers. 
+
+### gender
+
+```{r}
+unique(df$gender)
+```
+
+
+```{r}
+ggplot(df, aes(x=reorder(gender, paper, median), y=paper)) +
+  geom_boxplot(fill = "lightblue") +
+  labs(title="Boxplot of paper score by gender", 
+       x="gender", 
+       y="paper score") + 
+  theme_classic() + 
+  theme(legend.position="none",
+        axis.text.x = element_text(size =9),
+        axis.text.y = element_text(size =9),
+        axis.title = element_text(size =9),
+        plot.title = element_text(size =9)) 
+
+```
+
+We do not see any obvious variances in paper scores of different genders, but we might still want to check whether we should include this variable in model selection section.
+
+### gender and center
+
+```{r}
+set.seed(7)
+# sample of 30 counties we'll use for our analysis
+center_30 <- sample(unique(df$center), 30)
+```
+
+
+```{r}
+df_30 <- df %>%
+  filter(center %in% center_30) %>%
+  arrange(center)
+
+ggplot(df_30, aes(x = gender, y = paper), size=0.01) + 
+  geom_boxplot(fill = "lightblue") +
+  facet_wrap(~center)+
+  labs(title = "Boxplot of paper score against gender by center")+
+  theme_bw()+
+  theme(legend.position = "none",
+        axis.text.x = element_text(size =9),
+        axis.text.y = element_text(size =9),
+        axis.title = element_text(size =9),
+        plot.title = element_text(size =9))
+```
+
+We observe for different center, the trend of paper score varies by gender, which may indicates the need of including interaction terms of gender and center. However, this may induce a lot of parameters. 
+
+### coursework_eval
+```{r, message = False}
+p3 <- ggplot(data = df, aes(y = paper, x = coursework_eval, color = center)) +
+  geom_point(alpha = 0.2) +
+  ggtitle("By center") +
+  theme_classic() + 
+  theme(legend.position = "none") 
+
+p4 <- ggplot(data = df, aes(y = paper, x = coursework_eval)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(se=F, method="lm") +
+  facet_wrap(~gender) +
+  ggtitle("By gender") +
+  theme_classic() + 
+  theme(legend.position = "none") 
+
+p3+p4
+```
+
+There is a positive relationship between `coursework_eval` and `paper`, thus we might need the fixed effect of `coursework_eval`. We do not observe any huge differences of this relationship by center or by gender, thus there might be no need to add interaction terms of `center` and `coursework_val` or `gender` and `coursework_eval`. 
+
+
+## Model Selection
+
+```{r, message=F, warning=F}
+m1 <- lmer(paper ~ (1|center), data = df) 
+m2 <- lmer(paper ~ (1|center) + gender, data = df)
+m3 <- lmer(paper ~ (1|center) + coursework_eval, data = df)
+m4 <- lmer(paper ~ (1|center) + gender + coursework_eval, data = df)
+m5 <- lmer(paper ~ (1|center) + gender * coursework_eval, data = df)
+```
+
+
+
+```{r}
+AIC_variable <- sapply(c(m1, m2, m3, m4, m5), AIC)
+BIC_variable <- sapply(c(m1, m2, m3, m4, m5), BIC)
+var_results <- data.frame('Index ' = c('m1', 'm2', 'm3', 'm4', 'm5'),
+                          'Model' = c(paste0(m1@call)[2], 
+                                      paste0(m2@call)[2], 
+                                      paste0(m3@call)[2],
+                                      paste0(m4@call)[2],
+                                      paste0(m5@call)[2]),
+                          'AIC' = AIC_variable,
+                          'BIC' = BIC_variable,
+                          'Note ' = c('', '', '', '', 'too many parameters'), check.names = F)
+kable(var_results, caption = 'Model selection',
+      align = "c", booktabs = TRUE) %>%
+  kable_styling(latex_options = "HOLD_position")
+```
+
+The AIC suggest the best model is model 5, but there are too many parameters which makes the model harder to interpret and may induce the problem of overfitting, thus we choose model 4 instead, and its AIC and BIC are comparably low and acceptable.
+
+
+## Model Formula
+
+Now we can fit the ANOVA model for response `paper` and `center` as grouping variable because we would like to leverage the shared information of centers. 
+
+In the formula below, 
+$y_{ij}$ denotes response `paper` for individual i in center j. 
+$\mu$ is the grand mean.
+$\alpha_j$ denotes random effect of `center` j. 
+$G_{ij}$ denotes `gender` for individual i in center j. 
+$C_{ij}$ denotes `coursework_eval` for individual i in center j. 
+$\epsilon_{ij}$ indicates random error.
+
+The formula of our model is:
+
+$$y_{ij} = \mu + \alpha_{j} + \beta_{1} G_{ij} + \beta_{2} C_{ij} + \epsilon_{ij}$$
+where 
+$\alpha_{j} \sim N(0,\tau^2)$, $\epsilon_{ij} \sim N(0,\sigma^2)$,.
+
+
+
+## Model Results
+
+The estimate of $\tau$ and $\sigma$ are shown. Estimation $\hat{\tau}=10.35$ represents the across-center variation attributed to the random intercept. Estimation $\hat{\sigma}=15.52$ represents the within-center variation, this is higher than across-center variation. This is also remaining unexplained variation. We can see `center` explains a considerable portion of variation in `paper`.
+
+```{r,results = FALSE}
+fit = lmer(paper ~ (1|center)+ gender + coursework_eval, data = df)
+summary(fit)
+```
+
+For fixed effect.
+
+```{r}
+sum <- summary(fit)
+fix_coef <- data.frame(sum$coefficients)%>%
+  select(Estimate, Std..Error) %>%
+  mutate("Lower bound(95%)" = Estimate - 1.96*Std..Error,
+         "Upper bound(95%)" = Estimate + 1.96*Std..Error)
+colnames(fix_coef) <- c('Estimate', 'Std Error',"Lower bound(95%)", "Upper bound(95%)")
+rownames(fix_coef) <- c('General Intercept', 'gender1', 'coursework_eval')
+fix_coef %>%
+  kable(digits=3, caption = "Estimates of fixed effects")
+
+```
+
+The overall expectation of paper scores of a male student with coursework evaluation score 10 in all centers is 34.23. Given a testing center and coursework evalution score, female is expected to have paper score lower than male about 8.4. Holding other variables constant, the average paper score is expected to increase about 0.6 when coursework evaluation increases 1.
+
+
+```{r}
+data.frame("Parameter" = c("tau", "sigma"), "Estimate" = c(10.35, 15.52)) %>% kable(caption = "Estimation of parameters")
+```
+
+
+Then, we can calculate correlation between two individuals in the same center by using estimations above: 
+```{r}
+10.35^2/(10.35^2 + 15.52^2)
+```
+
+$$Corr(y_{ij}, y_{i'j}) = \frac{\hat{\tau}^2}{\hat{\tau}^2+\hat{\sigma}^2 } = \frac{10.35^2}{10.35^2 + 15.52^2} = 0.31$$
+
+From the result, this correlation is not extremely strong, but still not very small.
+
+We can also see the estimation of random intercept for each center in the below table. 
+
+
+```{r}
+rows <- rownames(coef(fit)$center)
+
+coef(fit)$center[,'(Intercept)']%>%
+  as.data.frame(row.names = rows) %>%
+  arrange(desc(`.`)) %>%
+  kable(col.names = "Random Effect Estimate", caption = "Random Effect Estimate by centers")
+```
+
+```{r,fig.height=6,fig.width=8, warning=F}
+dotplot(ranef(fit, condVar=TRUE))$center
+```
+
+```{r}
+60.81+34.23
+6.42+34.23
+```
+
+For each center, the baseline of paper score is different. From the visualization of random effects above, center 67105 seems to has highest intercept on average which is 95.04 and center 22710 has the lowest on average which is 40.7.
+
+## Model Assessment and Limitation
+### Influential center check
+```{r, fig.height=3.5, fig.width=8, cache = T, warning = F, message = F}
+#check influential lab group
+m1_inf <- influence(fit, "center")
+m1_cook <- cooks.distance(m1_inf, sort=TRUE)
+df2 <- data.frame(cook_dist = m1_cook,
+                 influential = m1_cook>(4/length(unique(df$center)))) %>%
+  arrange(desc(cook_dist)) 
+
+ggplot(df2) +
+  geom_point(aes(x = reorder(rownames(df2),cook_dist), y = cook_dist, color = influential)) +
+  theme_bw() +
+  coord_flip() +
+  scale_color_manual(values = c("black", "red")) +
+  labs(x = "Cook's distance", y = "centers", title="Cook's distance for centers")
+
+```
+
+Based on the left plot and table above, we observe centers 64343, 67105, 68137, 68107, 68233, 68405, 68411, 23208 have cooks distance larger than cutoff value. From the dot plot of random intercepts for centers, we observe some of them are in the lowest or highest intercepts, these centers are considered as outliers.
+
+## Residual Analysis
+
+```{r fig.height=3, fig.width=8, warning=F, message = F}
+#draw qqplot
+m1_res <- residuals(fit)
+
+p1 <- data.frame(m1_res) %>%
+  ggplot(aes(sample=m1_res)) +
+  geom_qq() +
+  geom_qq_line() +
+  theme_bw() +
+  labs(x = "Theoretical Quantiles", y = "Sample Quantile", title="Normal QQ Plot")
+
+m1_fitted <- fitted(fit)
+
+p2 <- data.frame(fitted=m1_fitted,
+           residual=m1_res) %>%
+  ggplot(aes(x=fitted, y=residual,)) +
+  geom_point(size=1, alpha=0.8) +
+  theme_bw() +
+  labs(title = "Residual vs fitted value") +
+  geom_hline(yintercept = 0, size = 0.5, color="red")
+
+p1+p2
+```
+
+We present a quantile-quantile plot of the standardized residuals against a standard normal distribution. We see that the residuals deviate very little from the theoretical quantiles in tails, generally it is very acceptable. From the residual vs fitted value plot, there seems to be no obvious trend. Thus our model is appropriate. 
+
+
+From the model created, center only explains a relatively small portion of the variation in paper score, to improve this, maybe we can take into account other potential factors from dataset with more predictors in the future studies.
+
+
+
+
+
+
+
+
+
+
