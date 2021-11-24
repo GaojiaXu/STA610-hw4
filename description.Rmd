@@ -1,4 +1,14 @@
-# STA610-hw4
+---
+title: "Multilevel Model Insights"
+author: "Gaojia Xu"
+date: "11/21/2021"
+output: html_document
+---
+
+Concept your tool is designed to illustrate;
+Method by which this concept is illustrated (e.g., describing the functionality of a Shiny app or type of content delivered);
+Any relevant references important to development of your tool.
+The pdf MUST also contain a link to your tool, if you have one. If you do not have a link, upload a zipped folder containing the files for said tool.
 
 
 The tool created for this homework is a mini-lecture which illustrates the aspect of understanding and use of multilevel models. 
@@ -11,3 +21,4 @@ Here is the video link of the [mini-lecture](https://youtu.be/c8RYwF-n6Lw).
 
 
 The lecture mention the concept of multilevel model and use this dataset to walk through basic workflow of using multilevel model. 
+
